@@ -1,9 +1,12 @@
 # go-idforge
 
-## Overview
-`go-idforge` is a robust, secure, and flexible identifier generation library for Go. It provides advanced capabilities for generating unique, cryptographically secure identifiers with extensive customization options.
+[![Go Report Card](https://goreportcard.com/badge/github.com/mrityunjay-vashisth/go-idforge)](https://goreportcard.com/report/github.com/mrityunjay-vashisth/go-idforge)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+go-idforge is a robust, secure, and flexible identifier generation library for Go. It provides advanced capabilities for generating unique, cryptographically secure identifiers with extensive customization options.
 
 ## Features
+
 - 🔐 Cryptographically secure ID generation
 - 🧩 Highly customizable generation parameters
 - 🔍 Advanced entropy collection
@@ -12,17 +15,21 @@
 - 🚀 High-performance ID generation
 
 ## Installation
+
+To install go-idforge, use the following command:
+
 ```bash
 go get github.com/mrityunjay-vashisth/go-idforge
 ```
 
 ## Basic Usage
+
 ```go
 package main
 
 import (
     "fmt"
-    "github.com/mrityunjay-vashisth/go-idforge"
+    "github.com/mrityunjay-vashisth/go-idforge/pkg/idforge"
 )
 
 func main() {
@@ -35,53 +42,126 @@ func main() {
         idforge.WithAlphabet("0123456789ABCDEF"),
         idforge.WithSize(8),
     )
-    customID, _ := customGen.Generate()
+    customID := customGen.MustGenerate()
     fmt.Println(customID)
 }
 ```
 
-## Advanced Usage
+## Extended Usage
+
 ```go
-// Create a validator with custom rules
-validator := idforge.NewIDValidator(
-    idforge.WithMinLength(12),
-    idforge.WithMaxLength(24),
+package main
+
+import (
+    "context"
+    "fmt"
+    "github.com/mrityunjay-vashisth/go-idforge/pkg/idforge"
 )
 
-// Generate and validate an ID
-generator := idforge.NewExtendedGenerator(
-    idforge.WithCustomAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()"),
-)
+func main() {
+    // Create an extended generator with custom configuration
+    extendedGen := idforge.NewExtendedGenerator(
+        idforge.WithCustomAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"),
+        func(cfg *idforge.GeneratorConfig) {
+            cfg.Size = 16
+            cfg.UniquenessPressure = 0.99
+        },
+    )
 
-id, err := generator.Generate(context.Background())
-if err != nil {
-    // Handle generation error
-}
-
-// Validate the generated ID
-if err := validator.Validate(id); err != nil {
-    // Handle validation error
+    // Generate an ID using the extended generator
+    id, err := extendedGen.Generate(context.Background())
+    if err != nil {
+        fmt.Println("Failed to generate ID:", err)
+        return
+    }
+    fmt.Println("Generated ID:", id)
 }
 ```
 
-## Configuration Options
-- Custom alphabet
-- Variable ID length
-- Multiple entropy sources
-- Advanced validation rules
-- Collision detection
+## Validation and Utility Functions
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/mrityunjay-vashisth/go-idforge/pkg/idforge"
+)
+
+func main() {
+    // Create a validator
+    validator := idforge.NewIDValidator(
+        idforge.WithMinLength(8),
+        idforge.WithMaxLength(16),
+        idforge.AddForbiddenPattern(`[^a-zA-Z0-9]`),
+    )
+
+    // Validate an ID
+    id := "abc123"
+    err := validator.Validate(id)
+    if err != nil {
+        fmt.Println("Validation failed:", err)
+    } else {
+        fmt.Println("Validation passed")
+    }
+
+    // Secure comparison
+    id1 := "abc123"
+    id2 := "xyz789"
+    if idforge.SecureCompare(id1, id2) {
+        fmt.Println("IDs are equal")
+    } else {
+        fmt.Println("IDs are not equal")
+    }
+}
+```
+
+## Error Handling
+
+go-idforge provides detailed error messages for various scenarios. It is important to handle errors appropriately in your code. For example:
+
+```go
+id, err := generator.Generate()
+if err != nil {
+    // Handle the error
+    log.Println("Failed to generate ID:", err)
+    return
+}
+```
 
 ## Security Considerations
+
+go-idforge takes security seriously and implements the following measures:
+
 - Cryptographically secure random number generation
 - Multiple entropy sources
 - Timing-safe comparisons
 - Comprehensive ID validation
 
+To ensure the security of your generated IDs, follow these best practices:
+
+- Use a sufficiently large character set and ID length
+- Avoid using predictable patterns or easily guessable IDs
+- Validate and sanitize IDs before using them in sensitive operations
+- Keep your go-idforge version up to date to benefit from the latest security improvements
+
 ## Contributing
-Contributions are welcome! Please read our contributing guidelines before submitting a pull request.
+
+Contributions to go-idforge are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request on the [GitHub repository](https://github.com/mrityunjay-vashisth/go-idforge).
+
+When contributing, please follow the existing code style and conventions. Make sure to write unit tests for any new features or changes.
 
 ## License
-[Specify License - e.g., MIT]
+
+go-idforge is released under the [MIT License](https://opensource.org/licenses/MIT).
 
 ## Contact
-[Your Contact Information]
+
+If you have any questions, suggestions, or feedback, please feel free to reach out:
+
+- Email: [mrityunjay.vashisth@gmail.com]
+- GitHub: [https://github.com/mrityunjay-vashisth]
+
+---
+
+Thank you for using go-idforge! We hope this library serves your ID generation needs effectively and securely. If you encounter any issues or have ideas for enhancements, please let us know. Happy coding!

@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,19 +75,31 @@ func (s *SystemEntropy) Provide(ctx context.Context) (string, error) {
 type NetworkEntropy struct{}
 
 func (n *NetworkEntropy) Provide(ctx context.Context) (string, error) {
+	// Get network interfaces
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
 
-	var entropy string
+	// Collect MAC addresses from non-loopback, up interfaces
+	var macAddresses []string
 	for _, iface := range interfaces {
+		// Check if interface is up and not a loopback
 		if iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagLoopback == 0 {
-			entropy += iface.HardwareAddr.String()
+			// Only add if HardwareAddr is not empty
+			if len(iface.HardwareAddr) > 0 {
+				macAddresses = append(macAddresses, iface.HardwareAddr.String())
+			}
 		}
 	}
 
-	return entropy, nil
+	// If no MAC addresses found, return empty string
+	if len(macAddresses) == 0 {
+		return "", nil
+	}
+
+	// Join MAC addresses
+	return strings.Join(macAddresses, ","), nil
 }
 
 // EnhancedEntropyProvider adds more sophisticated entropy generation

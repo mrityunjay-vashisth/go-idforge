@@ -141,6 +141,11 @@ func (v *IDValidator) Validate(id string) error {
 	return nil
 }
 
+// CustomizeRequiredCharSet allows modifying character set requirements
+func (v *IDValidator) CustomizeRequiredCharSet(newRequirements []CharacterSetRequirement) {
+	v.requiredCharSet = newRequirements
+}
+
 // SecureCompare provides timing-safe comparison of IDs
 func SecureCompare(a, b string) bool {
 	// Constant-time comparison to prevent timing attacks
@@ -160,30 +165,51 @@ func SanitizeID(id string, allowedChars string) string {
 	}, id)
 }
 
-// GenerateComplexityReport provides insights into ID complexity
+// GenerateComplexityReport provides comprehensive insights into ID complexity
 func GenerateComplexityReport(id string) map[string]interface{} {
-	report := map[string]interface{}{
-		"length": len(id),
-		"complexity": map[string]int{
-			"lowercase": 0,
-			"uppercase": 0,
-			"digits":    0,
-			"symbols":   0,
-		},
-		"entropy": calculateEntropy(id),
-	}
+	// Detailed complexity tracking
+	complexity := struct {
+		Lowercase int `json:"lowercase"`
+		Uppercase int `json:"uppercase"`
+		Digits    int `json:"digits"`
+		Symbols   int `json:"symbols"`
+	}{}
 
+	// Unique character tracking
+	uniqueChars := make(map[rune]int)
+
+	// Analyze each character
 	for _, char := range id {
 		switch {
 		case unicode.IsLower(char):
-			report["complexity"].(map[string]int)["lowercase"]++
+			complexity.Lowercase++
 		case unicode.IsUpper(char):
-			report["complexity"].(map[string]int)["uppercase"]++
+			complexity.Uppercase++
 		case unicode.IsDigit(char):
-			report["complexity"].(map[string]int)["digits"]++
+			complexity.Digits++
 		default:
-			report["complexity"].(map[string]int)["symbols"]++
+			complexity.Symbols++
 		}
+
+		// Track unique characters
+		uniqueChars[char]++
+	}
+
+	// Calculate entropy
+	entropy := calculateEntropy(id)
+
+	// Prepare comprehensive report
+	report := map[string]interface{}{
+		"length": len(id),
+		"complexity": map[string]int{
+			"lowercase": complexity.Lowercase,
+			"uppercase": complexity.Uppercase,
+			"digits":    complexity.Digits,
+			"symbols":   complexity.Symbols,
+		},
+		"uniqueCharacters": len(uniqueChars),
+		"entropy":          entropy,
+		"characterDetails": uniqueChars,
 	}
 
 	return report
@@ -191,11 +217,17 @@ func GenerateComplexityReport(id string) map[string]interface{} {
 
 // calculateEntropy estimates the Shannon entropy of the ID
 func calculateEntropy(id string) float64 {
+	if len(id) == 0 {
+		return 0
+	}
+
+	// Count character frequencies
 	charCount := make(map[rune]int)
 	for _, char := range id {
 		charCount[char]++
 	}
 
+	// Calculate entropy
 	entropy := 0.0
 	idLength := len(id)
 	for _, count := range charCount {

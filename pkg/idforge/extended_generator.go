@@ -57,24 +57,6 @@ func NewExtendedGenerator(opts ...func(*GeneratorConfig)) *ExtendedGenerator {
 	}
 }
 
-// WithCustomAlphabet sets a custom character set
-func WithCustomAlphabet(alphabet string) func(*GeneratorConfig) {
-	return func(c *GeneratorConfig) {
-		if len(alphabet) >= 2 {
-			c.Alphabet = alphabet
-		}
-	}
-}
-
-// WithEntropyProviders allows custom entropy sources
-func WithEntropyProviders(providers []entropy.EntropyProvider) func(*GeneratorConfig) {
-	return func(c *GeneratorConfig) {
-		if len(providers) > 0 {
-			c.Entropy = providers
-		}
-	}
-}
-
 // Generate creates a unique identifier with advanced features
 func (g *ExtendedGenerator) Generate(ctx context.Context) (string, error) {
 	g.mu.Lock()
@@ -88,60 +70,84 @@ func (g *ExtendedGenerator) Generate(ctx context.Context) (string, error) {
 		return "", ErrInvalidSize
 	}
 
+	// Check context immediately
+	select {
+	case <-ctx.Done():
+		return "", ErrGenerationTimeout
+	default:
+	}
+
 	// Prepare context with timeout
-	ctx, cancel := context.WithTimeout(ctx, g.config.MaxGenerationTime)
+	timeoutCtx, cancel := context.WithTimeout(ctx, g.config.MaxGenerationTime)
 	defer cancel()
 
 	// Collect entropy
 	var entropyParts []string
 	for _, provider := range g.config.Entropy {
-		entropyStr, err := provider.Provide(ctx)
-		if err != nil {
-			return "", err
-		}
-		entropyParts = append(entropyParts, entropyStr)
-	}
-
-	// Generate ID with uniqueness checks
-	alphabetLen := big.NewInt(int64(len(g.config.Alphabet)))
-	combinedEntropy := strings.Join(entropyParts, "")
-	seedBytes := []byte(combinedEntropy)
-
-	maxAttempts := int(math.Pow(float64(len(g.config.Alphabet)), float64(g.config.Size)) * g.config.UniquenessPressure)
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		// Generate candidate ID
-		id := make([]byte, g.config.Size)
-		for i := 0; i < g.config.Size; i++ {
-			num, err := rand.Int(rand.Reader, alphabetLen)
+		// Check context after each entropy collection
+		select {
+		case <-timeoutCtx.Done():
+			return "", ErrGenerationTimeout
+		default:
+			entropyStr, err := provider.Provide(timeoutCtx)
 			if err != nil {
 				return "", err
 			}
-
-			// Incorporate entropy-based randomness
-			if len(seedBytes) > 0 {
-				num = new(big.Int).Add(
-					num,
-					big.NewInt(int64(seedBytes[i%len(seedBytes)])),
-				)
-				num = new(big.Int).Mod(num, alphabetLen)
-			}
-
-			id[i] = g.config.Alphabet[num.Int64()]
+			entropyParts = append(entropyParts, entropyStr)
 		}
+	}
 
-		candidateID := string(id)
+	// Determine maximum attempts more dynamically
+	alphabetLen := len(g.config.Alphabet)
+	maxAttempts := int(math.Min(
+		math.Pow(float64(alphabetLen), float64(g.config.Size))*g.config.UniquenessPressure,
+		1000, // Prevent excessive iterations
+	))
 
-		// Check for uniqueness
-		if !g.generated[candidateID] {
-			g.generated[candidateID] = true
-			return candidateID, nil
-		}
+	// Seed random generation with entropy
+	combinedEntropy := strings.Join(entropyParts, "")
+	seedBytes := []byte(combinedEntropy)
 
-		// Check for context cancellation
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Frequently check for context cancellation
 		select {
-		case <-ctx.Done():
+		case <-timeoutCtx.Done():
 			return "", ErrGenerationTimeout
 		default:
+			// Generate candidate ID
+			id := make([]byte, g.config.Size)
+			for i := 0; i < g.config.Size; i++ {
+				// Check context between each character generation
+				select {
+				case <-timeoutCtx.Done():
+					return "", ErrGenerationTimeout
+				default:
+					// Use crypto/rand for secure randomness
+					num, err := rand.Int(rand.Reader, big.NewInt(int64(len(g.config.Alphabet))))
+					if err != nil {
+						return "", err
+					}
+
+					// Incorporate entropy-based randomness
+					if len(seedBytes) > 0 {
+						num = new(big.Int).Add(
+							num,
+							big.NewInt(int64(seedBytes[i%len(seedBytes)])),
+						)
+						num = new(big.Int).Mod(num, big.NewInt(int64(len(g.config.Alphabet))))
+					}
+
+					id[i] = g.config.Alphabet[num.Int64()]
+				}
+			}
+
+			candidateID := string(id)
+
+			// Check for uniqueness
+			if !g.generated[candidateID] {
+				g.generated[candidateID] = true
+				return candidateID, nil
+			}
 		}
 	}
 
@@ -166,8 +172,13 @@ func (g *ExtendedGenerator) Validate(id string) bool {
 // GetUniquenessProbability calculates the probability of generating a unique ID
 func (g *ExtendedGenerator) GetUniquenessProbability(numIDs int) float64 {
 	alphabetSize := len(g.config.Alphabet)
-	return 1 - math.Exp(
-		-float64(numIDs*(numIDs-1))/
-			(2*math.Pow(float64(alphabetSize), float64(g.config.Size))),
+	possibleCombinations := math.Pow(float64(alphabetSize), float64(g.config.Size))
+
+	// Probability of at least one collision
+	probabilityOfCollision := 1 - math.Exp(
+		-float64(numIDs*(numIDs-1))/(2*possibleCombinations),
 	)
+
+	// Return probability of no collisions
+	return 1 - probabilityOfCollision
 }

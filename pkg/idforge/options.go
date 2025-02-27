@@ -1,5 +1,7 @@
 package idforge
 
+import "github.com/mrityunjay-vashisth/go-idforge/internal/entropy"
+
 // Option defines a function type for configuring the generator
 type Option func(*Generator)
 
@@ -8,6 +10,24 @@ func WithAlphabet(alphabet string) Option {
 	return func(g *Generator) {
 		if len(alphabet) >= 2 {
 			g.alphabet = alphabet
+		}
+	}
+}
+
+// WithCustomAlphabet sets a custom character set for ID generation
+func WithCustomAlphabet(alphabet string) func(*GeneratorConfig) {
+	return func(c *GeneratorConfig) {
+		if len(alphabet) >= 2 {
+			c.Alphabet = alphabet
+		}
+	}
+}
+
+// WithEntropyProviders allows custom entropy sources
+func WithEntropyProviders(providers []entropy.EntropyProvider) func(*GeneratorConfig) {
+	return func(c *GeneratorConfig) {
+		if len(providers) > 0 {
+			c.Entropy = providers
 		}
 	}
 }
