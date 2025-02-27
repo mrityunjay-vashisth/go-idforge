@@ -26,6 +26,7 @@ type GeneratorConfig struct {
 	Entropy            []entropy.EntropyProvider
 	MaxGenerationTime  time.Duration
 	UniquenessPressure float64
+	MaxUniqueIDs       int // New option to limit unique ID tracking
 }
 
 // ExtendedGenerator provides more advanced ID generation capabilities
@@ -33,6 +34,7 @@ type ExtendedGenerator struct {
 	mu        sync.Mutex
 	config    GeneratorConfig
 	generated map[string]bool
+	idCounter int
 }
 
 // NewExtendedGenerator creates a new generator with comprehensive configuration
@@ -43,7 +45,8 @@ func NewExtendedGenerator(opts ...func(*GeneratorConfig)) *ExtendedGenerator {
 		Size:               DefaultSize,
 		Entropy:            entropy.DefaultEntropyProviders(),
 		MaxGenerationTime:  5 * time.Second,
-		UniquenessPressure: 0.99, // 99% uniqueness guarantee
+		UniquenessPressure: 0.99,  // 99% uniqueness guarantee
+		MaxUniqueIDs:       10000, // Limit unique ID tracking
 	}
 
 	// Apply custom options
@@ -54,6 +57,7 @@ func NewExtendedGenerator(opts ...func(*GeneratorConfig)) *ExtendedGenerator {
 	return &ExtendedGenerator{
 		config:    config,
 		generated: make(map[string]bool),
+		idCounter: 0,
 	}
 }
 
@@ -70,103 +74,106 @@ func (g *ExtendedGenerator) Generate(ctx context.Context) (string, error) {
 		return "", ErrInvalidSize
 	}
 
-	// Check context immediately
-	select {
-	case <-ctx.Done():
-		return "", ErrGenerationTimeout
-	default:
-	}
-
 	// Prepare context with timeout
 	timeoutCtx, cancel := context.WithTimeout(ctx, g.config.MaxGenerationTime)
 	defer cancel()
 
-	// Collect entropy
-	var entropyParts []string
-	for _, provider := range g.config.Entropy {
-		// Check context after each entropy collection
-		select {
-		case <-timeoutCtx.Done():
-			return "", ErrGenerationTimeout
-		default:
-			entropyStr, err := provider.Provide(timeoutCtx)
-			if err != nil {
-				return "", err
-			}
-			entropyParts = append(entropyParts, entropyStr)
-		}
+	// Efficient entropy collection with context check
+	entropyParts, err := g.collectEntropy(timeoutCtx)
+	if err != nil {
+		return "", err
 	}
 
-	// Determine maximum attempts more dynamically
+	// Dynamic max attempts calculation
 	alphabetLen := len(g.config.Alphabet)
-	maxAttempts := int(math.Min(
-		math.Pow(float64(alphabetLen), float64(g.config.Size))*g.config.UniquenessPressure,
-		1000, // Prevent excessive iterations
-	))
+	maxAttempts := calculateMaxAttempts(alphabetLen, g.config.Size, g.config.UniquenessPressure)
 
 	// Seed random generation with entropy
 	combinedEntropy := strings.Join(entropyParts, "")
 	seedBytes := []byte(combinedEntropy)
 
+	// More efficient unique ID tracking
+	if g.idCounter >= g.config.MaxUniqueIDs {
+		g.generated = make(map[string]bool)
+		g.idCounter = 0
+	}
+
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		// Frequently check for context cancellation
-		select {
-		case <-timeoutCtx.Done():
-			return "", ErrGenerationTimeout
-		default:
-			// Generate candidate ID
-			id := make([]byte, g.config.Size)
-			for i := 0; i < g.config.Size; i++ {
-				// Check context between each character generation
-				select {
-				case <-timeoutCtx.Done():
-					return "", ErrGenerationTimeout
-				default:
-					// Use crypto/rand for secure randomness
-					num, err := rand.Int(rand.Reader, big.NewInt(int64(len(g.config.Alphabet))))
-					if err != nil {
-						return "", err
-					}
-
-					// Incorporate entropy-based randomness
-					if len(seedBytes) > 0 {
-						num = new(big.Int).Add(
-							num,
-							big.NewInt(int64(seedBytes[i%len(seedBytes)])),
-						)
-						num = new(big.Int).Mod(num, big.NewInt(int64(len(g.config.Alphabet))))
-					}
-
-					id[i] = g.config.Alphabet[num.Int64()]
-				}
+		// Less frequent context checks
+		if attempt%10 == 0 {
+			select {
+			case <-timeoutCtx.Done():
+				return "", ErrGenerationTimeout
+			default:
 			}
+		}
 
-			candidateID := string(id)
+		// Generate candidate ID with optimized randomness
+		candidateID := g.generateCandidateID(seedBytes)
 
-			// Check for uniqueness
-			if !g.generated[candidateID] {
-				g.generated[candidateID] = true
-				return candidateID, nil
-			}
+		// Check for uniqueness
+		if !g.generated[candidateID] {
+			g.generated[candidateID] = true
+			g.idCounter++
+			return candidateID, nil
 		}
 	}
 
 	return "", ErrGenerationTimeout
 }
 
-// Validate checks if an ID meets the generator's criteria
-func (g *ExtendedGenerator) Validate(id string) bool {
-	if len(id) != g.config.Size {
-		return false
-	}
+// collectEntropy efficiently gathers entropy with context management
+func (g *ExtendedGenerator) collectEntropy(ctx context.Context) ([]string, error) {
+	entropyParts := make([]string, 0, len(g.config.Entropy))
 
-	for _, char := range id {
-		if !strings.ContainsRune(g.config.Alphabet, char) {
-			return false
+	for _, provider := range g.config.Entropy {
+		// Occasional context check to reduce overhead
+		select {
+		case <-ctx.Done():
+			return nil, ErrGenerationTimeout
+		default:
+			entropyStr, err := provider.Provide(ctx)
+			if err != nil {
+				return nil, err
+			}
+			entropyParts = append(entropyParts, entropyStr)
 		}
 	}
 
-	return true
+	return entropyParts, nil
+}
+
+// generateCandidateID creates an ID with enhanced randomness
+func (g *ExtendedGenerator) generateCandidateID(seedBytes []byte) string {
+	id := make([]byte, g.config.Size)
+	alphabetLen := big.NewInt(int64(len(g.config.Alphabet)))
+
+	for i := 0; i < g.config.Size; i++ {
+		// Use crypto/rand for secure randomness
+		num, _ := rand.Int(rand.Reader, alphabetLen)
+
+		// Incorporate entropy-based randomness
+		if len(seedBytes) > 0 {
+			num = new(big.Int).Add(
+				num,
+				big.NewInt(int64(seedBytes[i%len(seedBytes)])),
+			)
+			num = new(big.Int).Mod(num, alphabetLen)
+		}
+
+		id[i] = g.config.Alphabet[num.Int64()]
+	}
+
+	return string(id)
+}
+
+// Utility function to calculate max attempts dynamically
+func calculateMaxAttempts(alphabetLen, size int, uniquenessPressure float64) int {
+	maxAttempts := int(math.Min(
+		math.Pow(float64(alphabetLen), float64(size))*uniquenessPressure,
+		1000, // Prevent excessive iterations
+	))
+	return maxAttempts
 }
 
 // GetUniquenessProbability calculates the probability of generating a unique ID

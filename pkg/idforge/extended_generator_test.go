@@ -110,46 +110,6 @@ func TestExtendedGeneratorGenerate(t *testing.T) {
 	}
 }
 
-func TestExtendedGeneratorValidate(t *testing.T) {
-	// Test with default generator
-	gen := NewExtendedGenerator()
-
-	// Test valid IDs
-	validTestCases := []struct {
-		id       string
-		expected bool
-	}{
-		// Valid IDs matching default configuration
-		{id: "abcdefghijklmnopqrstu", expected: true},
-		{id: "0123456789abcdefghijk", expected: true},
-	}
-
-	for _, tc := range validTestCases {
-		result := gen.Validate(tc.id)
-		if result != tc.expected {
-			t.Errorf("Validation failed for ID %s. Expected %v, got %v",
-				tc.id, tc.expected, result)
-		}
-	}
-
-	// Test invalid IDs
-	invalidTestCases := []string{
-		// Wrong length
-		"short",
-		"waytoooooooooooooooooooooooooooooooolong",
-
-		// Invalid characters
-		strings.Repeat("!", DefaultSize),
-		"ID-WITH-SPECIAL-CHARS",
-	}
-
-	for _, invalidID := range invalidTestCases {
-		if gen.Validate(invalidID) {
-			t.Errorf("Invalid ID '%s' passed validation", invalidID)
-		}
-	}
-}
-
 func TestExtendedGeneratorUniquenessProbability(t *testing.T) {
 	// Test with different configurations
 	testCases := []struct {

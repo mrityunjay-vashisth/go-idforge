@@ -159,7 +159,7 @@ go-idforge is released under the [MIT License](https://opensource.org/licenses/M
 
 If you have any questions, suggestions, or feedback, please feel free to reach out:
 
-- Email: [mrityunjay.vashisth@gmail.com]
+- Email: [mrityunjayvashisth@gmail.com]
 - GitHub: [https://github.com/mrityunjay-vashisth]
 
 ---
