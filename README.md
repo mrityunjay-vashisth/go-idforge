@@ -9,10 +9,10 @@ go-idforge is a robust, secure, and flexible identifier generation library for G
 
 - 🔐 Cryptographically secure ID generation
 - 🧩 Highly customizable generation parameters
-- 🔍 Advanced entropy collection
-- 📊 Comprehensive validation
-- 🛡️ Collision detection
-- 🚀 High-performance ID generation
+- 🔍 Advanced multi-source entropy collection
+- 📊 Comprehensive validation and collision detection
+- ⏱️ Context-aware generation with timeout support
+- 🚀 High-performance, concurrent-safe ID generation
 
 ## Installation
 
@@ -35,7 +35,11 @@ import (
 func main() {
     // Generate a default ID
     id := idforge.Generate()
-    fmt.Println(id)
+    fmt.Println("Default ID:", id)
+
+    // Generate with custom size
+    shortID := idforge.GenerateWithSize(10)
+    fmt.Println("Short ID:", shortID)
 
     // Generate with custom configuration
     customGen := idforge.New(
@@ -43,11 +47,13 @@ func main() {
         idforge.WithSize(8),
     )
     customID := customGen.MustGenerate()
-    fmt.Println(customID)
+    fmt.Println("Custom ID:", customID)
 }
 ```
 
 ## Extended Usage
+
+The library offers an extended generator with advanced features:
 
 ```go
 package main
@@ -55,57 +61,159 @@ package main
 import (
     "context"
     "fmt"
+    "log"
+    "time"
     "github.com/mrityunjay-vashisth/go-idforge/pkg/idforge"
+    "github.com/mrityunjay-vashisth/go-idforge/internal/entropy"
 )
 
 func main() {
     // Create an extended generator with custom configuration
     extendedGen := idforge.NewExtendedGenerator(
-        idforge.WithCustomAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"),
+        idforge.WithCustomAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
         func(cfg *idforge.GeneratorConfig) {
             cfg.Size = 16
             cfg.UniquenessPressure = 0.99
+            cfg.MaxGenerationTime = 2 * time.Second
         },
     )
 
-    // Generate an ID using the extended generator
-    id, err := extendedGen.Generate(context.Background())
+    // Generate with context support
+    ctx := context.Background()
+    id, err := extendedGen.Generate(ctx)
     if err != nil {
-        fmt.Println("Failed to generate ID:", err)
-        return
+        log.Fatalf("Failed to generate ID: %v", err)
     }
     fmt.Println("Generated ID:", id)
+    
+    // Calculate uniqueness probability
+    probability := extendedGen.GetUniquenessProbability(1000)
+    fmt.Printf("Probability of no collisions across 1000 IDs: %.8f\n", probability)
 }
+```
+
+## Secure Token Generation
+
+Besides ID generation, the library provides utilities for secure token generation:
+
+```go
+// Generate a cryptographically secure token
+token, err := idforge.GenerateSecureToken(32)
+if err != nil {
+    log.Fatalf("Failed to generate token: %v", err)
+}
+fmt.Println("Secure Token:", token)
+
+// Generate a token with panic on error
+panicToken := idforge.MustGenerateSecureToken(24)
+fmt.Println("Must Generate Token:", panicToken)
+```
+
+## Advanced Entropy Collection
+
+The library uses multiple entropy sources to ensure high-quality randomness:
+
+- Timestamp-based entropy
+- UUID-based entropy
+- Cryptographically secure random bytes
+- System information (memory usage, CPU count, GC stats)
+- Network interface information
+- Enhanced entropy with aggregation and hashing
+
+You can customize entropy providers:
+
+```go
+customGen := idforge.NewExtendedGenerator(
+    idforge.WithEntropyProviders([]entropy.EntropyProvider{
+        &entropy.TimestampEntropy{},
+        &entropy.UUIDEntropy{},
+        &entropy.RandomBytesEntropy{},
+        &entropy.SystemEntropy{},
+    }),
+)
+```
+
+## Customization Options
+
+### Basic Generator Options
+
+- `WithAlphabet(string)`: Define custom character set for IDs
+- `WithSize(int)`: Set exact ID length
+- `WithMinSize(int)`: Ensure minimum ID length
+- `WithMaxSize(int)`: Cap maximum ID length
+
+### Extended Generator Options
+
+- `WithCustomAlphabet(string)`: Define custom character set
+- `WithEntropyProviders([]entropy.EntropyProvider)`: Custom entropy sources
+- Custom configuration via function:
+  ```go
+  func(cfg *idforge.GeneratorConfig) {
+      cfg.Size = 16
+      cfg.MaxGenerationTime = 2 * time.Second
+      cfg.UniquenessPressure = 0.99
+      cfg.MaxUniqueIDs = 10000
+  }
+  ```
+
+## ID Validation
+
+Both generators provide methods to validate IDs:
+
+```go
+// Basic validation
+isValid := idforge.IsValidID(id, "0123456789ABCDEF", 8)
+
+// Generator-specific validation
+gen := idforge.New(idforge.WithAlphabet("0123456789ABCDEF"))
+isValid := gen.Validate(id)
 ```
 
 ## Error Handling
 
-go-idforge provides detailed error messages for various scenarios. It is important to handle errors appropriately in your code. For example:
+The library provides comprehensive error handling:
 
 ```go
 id, err := generator.Generate()
 if err != nil {
-    // Handle the error
-    log.Println("Failed to generate ID:", err)
-    return
+    switch {
+    case errors.Is(err, idforge.ErrInvalidAlphabet):
+        // Handle invalid alphabet
+    case errors.Is(err, idforge.ErrInvalidSize):
+        // Handle invalid size
+    case errors.Is(err, idforge.ErrGenerationTimeout):
+        // Handle timeout
+    default:
+        // Handle other errors
+    }
 }
 ```
+
+## Performance Considerations
+
+For high-volume ID generation:
+
+1. Reuse generator instances rather than creating new ones
+2. Use appropriate alphabet and size for your use case
+3. Set realistic `MaxGenerationTime` for your application
+4. Adjust `UniquenessPressure` based on uniqueness requirements
+5. Set appropriate `MaxUniqueIDs` to limit memory consumption
 
 ## Security Considerations
 
 go-idforge takes security seriously and implements the following measures:
 
-- Cryptographically secure random number generation
-- Multiple entropy sources
-- Timing-safe comparisons
+- Cryptographically secure random number generation with `crypto/rand`
+- Multiple entropy sources for maximum unpredictability
+- Secure token generation with Base32 encoding
 - Comprehensive ID validation
 
-To ensure the security of your generated IDs, follow these best practices:
+To ensure the security of your generated IDs:
 
 - Use a sufficiently large character set and ID length
 - Avoid using predictable patterns or easily guessable IDs
 - Validate and sanitize IDs before using them in sensitive operations
-- Keep your go-idforge version up to date to benefit from the latest security improvements
+- Keep your go-idforge version up to date
 
 ## Contributing
 
@@ -126,4 +234,4 @@ If you have any questions, suggestions, or feedback, please feel free to reach o
 
 ---
 
-Thank you for using go-idforge! We hope this library serves your ID generation needs effectively and securely. If you encounter any issues or have ideas for enhancements, please let us know. Happy coding!
+Thank you for using go-idforge! We hope this library serves your ID generation needs effectively and securely.
