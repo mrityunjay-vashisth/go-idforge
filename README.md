@@ -78,44 +78,6 @@ func main() {
 }
 ```
 
-## Validation and Utility Functions
-
-```go
-package main
-
-import (
-    "fmt"
-    "github.com/mrityunjay-vashisth/go-idforge/pkg/idforge"
-)
-
-func main() {
-    // Create a validator
-    validator := idforge.NewIDValidator(
-        idforge.WithMinLength(8),
-        idforge.WithMaxLength(16),
-        idforge.AddForbiddenPattern(`[^a-zA-Z0-9]`),
-    )
-
-    // Validate an ID
-    id := "abc123"
-    err := validator.Validate(id)
-    if err != nil {
-        fmt.Println("Validation failed:", err)
-    } else {
-        fmt.Println("Validation passed")
-    }
-
-    // Secure comparison
-    id1 := "abc123"
-    id2 := "xyz789"
-    if idforge.SecureCompare(id1, id2) {
-        fmt.Println("IDs are equal")
-    } else {
-        fmt.Println("IDs are not equal")
-    }
-}
-```
-
 ## Error Handling
 
 go-idforge provides detailed error messages for various scenarios. It is important to handle errors appropriately in your code. For example:
